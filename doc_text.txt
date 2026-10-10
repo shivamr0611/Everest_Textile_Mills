@@ -1,0 +1,347 @@
+RCOD Document – Textile Manufacturing System
+Client: Everest Textile Mills  |  Unit of measure: all quantities in kg  |  Stack: MySQL · Python (Flask) or Node.js (Express) · HTML/CSS/JS + React
+RCOD is used here as Requirements, Constraints, Objectives, Design. If your institution defines RCOD differently, the content below can be re-sorted under your headings.
+
+1. Introduction
+1.1 Purpose
+Everest Textile Mills currently runs on notebooks, paper slips, registers and phone calls. This document defines one unified web platform that replaces them: yarn purchase and gate entry, stock monitoring, a FIFO production queue, quality checks, buyer order tracking, dispatch with invoicing, and month-end finances.
+1.2 Users (roles)
+Role
+Who
+What they can see/do
+Company (admin / staff)
+Owner, store keeper, floor supervisor, QC inspector
+Everything: yarn, stock, factory status, QC, dispatch, invoices, costs, reports
+Customer (buyer)
+Fabric buyer
+Place orders and check order status only
+Supplier
+Yarn supplier
+See yarn orders raised by the mill (quantity, colour, order number)
+1.3 Assumptions
+All quantities are in kg (yarn, fabric, rolls).
+Yarn is bought already in the required colour, so a fabric order of colour X consumes yarn of colour X.
+A fixed wastage factor (default 5%, configurable) is added when calculating the yarn needed for an order: yarn_needed = fabric_kg × 1.05.
+Every order passes three stages in this sequence: Spinning → Weaving → Dyeing, each stage done on a machine of that type.
+Colours come from a fixed list of 100 Pantone textile colours (Section 4.3).
+
+2. Requirements
+2.1 Functional requirements
+Module A – Authentication & Roles
+ID
+Requirement
+A1
+Users log in with email and password; role (company / customer / supplier) decides which pages open.
+A2
+Customers can only see their own orders.
+A3
+Dispatch matching, invoices and costs are hidden from customers (enforced in the backend, not just the UI).
+Module B – Yarn Ordering (Company → Supplier)
+ID
+Requirement
+B1
+Company page has a "Order Yarn" form: supplier, yarn type, colour (Pantone dropdown), quantity (kg), price per kg.
+B2
+Saving creates a yarn order with a unique order_no and status not_supplied .
+B3
+The Supplier page lists these orders showing order_no, colour, quantity (and type) so the supplier knows what to send.
+Module C – Yarn Arrival at the Gate
+ID
+Requirement
+C1
+Gate-entry form takes exactly four inputs: quantity received (kg), yarn type, colour, and the company's yarn order number.
+C2
+System validates the order number exists, is still not_supplied, and that type and colour match that order. Mismatch → clear error, nothing saved.
+C3
+If quantity received is less than ordered, the system shows a warning (partial delivery) and the order stays not_supplied until fully received. When received total ≥ ordered, status becomes supplied.
+C4
+On a valid entry the received kg is added to yarn stock for that (type, colour). A gate receipt record is stored (who, when).
+Module D – Raw Material Stock & Warnings
+ID
+Requirement
+D1
+Stock page shows, per (yarn type, colour): available kg, reserved kg, free kg (= available − reserved), and reorder level.
+D2
+Low-stock warning: if free kg ≤ reorder level, show a red banner/badge on the dashboard and stock page. Each (type, colour) has its own reorder level.
+D3
+When a new buyer order arrives, the system computes yarn needed and shows "Enough yarn – ready to start" or "Short by X kg – order more".
+D4
+If short, order status is awaiting_yarn and a button "Create yarn order for shortfall" pre-fills the yarn order form.
+D5
+If enough, the needed kg is reserved so two orders cannot claim the same yarn. Reservation is converted to consumption as production uses it.
+D6
+When a yarn order becomes supplied, orders waiting in awaiting_yarn are re-checked automatically (oldest first).
+Module E – Production Floor (FIFO Queue & Factory Status)
+ID
+Requirement
+E1
+Orders with enough yarn enter a FIFO queue (first in, first out by the time they became ready).
+E2
+Each queued order is assigned to the first idle machine of the right stage type. When a machine finishes a job and becomes free, the next order in the queue is assigned to it automatically.
+E3
+Machine states: idle, running, breakdown. A broken machine is skipped by the assigner. If it breaks while running a job, that job returns to the front of its queue.
+E4
+Company page has a "Factory Status" button opening a page showing for every machine: its state, the order it is on, the stage, progress (kg done / kg target, %), and kg produced today. Idle machines are listed clearly.
+E5
+Supervisors record production (kg) against a job, with shift and worker. Progress and totals update immediately.
+E6
+Live total: the company can see at any moment how much fabric has been produced so far today (kg), overall and per machine.
+E7
+End-of-day report: generated automatically at day end (and on demand): total kg produced today, kg per machine, per order, per shift, with a download (CSV).
+Module F – Quality Check (QC)
+ID
+Requirement
+F1
+When an order completes dyeing, finished fabric is recorded as rolls. Each roll gets a unique roll code and is linked to its order and the machine it came from.
+F2
+Every new roll starts as pending QC.
+F3
+The inspector records a result: passed, rework or rejected. For rework/rejected, a defect type is required: hole, colour mismatch, uneven weaving, other, plus notes.
+F4
+Rework rolls return to production and come back to QC as pending (a new inspection row, history kept).
+F5
+The company can view all QC data: passed / rework / rejected / pending lists, filter by order, machine, defect, date. A defect summary per machine shows which machine causes which defects (traceability).
+Module G – Buyer Order Tracking (Customer page)
+ID
+Requirement
+G1
+Customers place an order: fabric type, colour (Pantone), quantity (kg), deadline.
+G2
+The customer page shows each order's current status without any phone call.
+G3
+Status shown to the customer is derived from system data (not typed by hand): Placed → Awaiting Yarn → In Queue → Spinning → Weaving → Dyeing → Quality Check → Ready to Ship → Dispatched.
+G4
+Customer sees order number, status, quantity, deadline, and an estimated delivery date. No roll numbers, invoices, machine names or costs.
+Module H – Dispatch & Finished Goods Store
+ID
+Requirement
+H1
+Only QC-passed rolls can be dispatched. They sit in the finished-goods store as in_stock.
+H2
+Dispatch screen (company only): pick an order → system lists that order's passed rolls → staff select rolls to load. System checks they all belong to that buyer's order (right rolls, right buyer) and total kg matches the order quantity (right quantity).
+H3
+A roll can be dispatched once only (database-enforced). Dispatched rolls become dispatched and leave stock.
+H4
+An invoice is generated from the same dispatch: its lines and kg are taken from the loaded rolls, so invoice and load always match.
+H5
+Finished-goods store page shows kg on the shelf (passed, not dispatched), and a history of what has gone out (truck number, date, order, buyer, invoice).
+H6
+The dispatch/roll-matching/invoice screens are company-only. Customers only see the status Ready to Ship or Dispatched.
+Module I – Workers, Wages & Month-End Finance
+ID
+Requirement
+I1
+Daily attendance per worker per shift replaces the register.
+I2
+Monthly wages = days present × daily wage; wage payments are recorded.
+I3
+Raw material bills = yarn orders received × price per kg; supplier payments are recorded.
+I4
+Buyer payments are recorded against invoices/orders.
+I5
+Month-end dashboard shows: (a) cost of each order (yarn cost + allocated wages), (b) kg produced by every machine, (c) total wages paid, (d) money received from buyers, (e) profit / loss for the month.
+Module J – Machine Management
+ID
+Requirement
+J1
+Add a machine: the company page has a Machines page with an "Add Machine" form: machine name, stage type (spinning / weaving / dyeing), capacity (kg per hour, optional) and installation date. A new machine starts as idle, appears on Factory Status at once, and the FIFO assigner runs immediately so a waiting order can be given to it.
+J2
+See how a machine functions: clicking a machine opens its detail page with current status, current order and stage, progress (kg done / target, %), kg produced today and this month, hours running / idle / broken today, number of breakdowns, defect rate of the rolls it made (from QC), and a dated event history (added, job started, job finished, breakdown, repaired, removed).
+J3
+Mark a breakdown: the machine is set to breakdown and skipped by the assigner. If it was running a job, that job goes back to the front of its stage queue and keeps its original place. When repaired, the machine returns to idle.
+J4
+Remove a broken machine: a machine can be removed only when it is breakdown or idle (a running machine must first be marked as broken). The company confirms and enters a reason. A removed machine disappears from Factory Status and can never be assigned a job.
+J5
+History is kept: removal is a "soft delete" (status removed, removal date and reason stored). Past rolls, production logs and QC defects still point to that machine, so traceability and month-end machine output stay correct. The company can view a Removed Machines list. Machine names are unique, so a replacement machine needs a new name.
+2.2 Non-functional requirements
+ID
+Requirement
+N1
+Simple to use: each task needs few clicks; forms have dropdowns instead of free text for type/colour.
+N2
+Accuracy: stock, queue and dispatch use database transactions so numbers never go out of sync.
+N3
+Security: passwords hashed, role-based access on every API, customers cannot call company APIs.
+N4
+Traceability: every roll → order → machine → shift/worker.
+N5
+Performance: pages load in under 3 seconds for up to ~10,000 rolls.
+N6
+Works on desktop and tablet (floor supervisors use tablets).
+
+3. Constraints
+#
+Constraint
+1
+Database must be MySQL.
+2
+Backend must be Python or Node.js (this document uses Flask/Express-style REST routes; either works).
+3
+Frontend uses HTML, CSS, JavaScript and React.
+4
+All quantities are stored and displayed in kg.
+5
+Colours are limited to the 100 Pantone textile colours list, including the 12 standard colours.
+6
+The yarn order status has only two values: supplied / not supplied.
+7
+Production assignment must follow FIFO order.
+8
+Customers must never see dispatch matching, invoices or costs.
+9
+Pantone is a licensed colour system; colour names/codes are stored as reference data only (no Pantone software integration).
+10
+Single mill (one factory) in this version; no multi-branch support.
+
+4. Objectives
+Replace notebooks and calls with one web platform for the whole mill.
+Never run out of yarn unexpectedly – stock is always known and low-stock warns early.
+Start orders only when yarn is enough, and see shortages instantly.
+Keep machines busy – FIFO queue auto-assigns the next order when a machine frees up.
+Know the floor at a glance – one Factory Status page and live daily production total.
+Trace every defect back to order and machine.
+Let buyers self-serve order status, ending status phone calls.
+Dispatch correctly – right rolls, right quantity, right buyer, matching invoice, never twice.
+Show the true cost of an order and whether the mill made money each month.
+
+5. Design
+5.1 Architecture (kept simple)
+React UI (Company / Customer / Supplier pages)        |  HTTPS + JSON (REST)   Backend API (Flask or Express)  -- business rules, FIFO, stock checks        |  SQL      MySQL database
+Three layers only. All rules (stock check, FIFO assignment, dispatch matching) live in the backend so the UI cannot bypass them.
+5.2 Pages
+Company page (menu): Dashboard (low-stock alerts, today's kg) · Order Yarn · Gate Entry · Yarn Stock · Buyer Orders · Factory Status (button) · Machines (add / view / remove) · Production Entry · Quality Check · Finished Goods Store · Dispatch & Invoice · Workers & Wages · Month-End Report
+Customer page: My Orders (with status) · Place New Order
+Supplier page: Yarn Orders received (order_no, colour, type, quantity, status)
+5.3 Main workflow
+Company orders yarn -> Supplier sees order -> Truck arrives -> Gate entry (4 inputs)   -> status = supplied, stock += kgBuyer places order -> yarn check -> enough? reserve & join FIFO queue : awaiting_yarnQueue -> idle Spinning machine -> Weaving machine -> Dyeing machine (auto next in queue)Dyeing done -> rolls created (order + machine linked) -> QC: pass / rework / rejectPassed rolls -> store (in_stock) -> Dispatch (match buyer+qty) -> InvoicePayments, wages, yarn bills -> Month-end report
+5.4 Colour list (Pantone textile)
+A colours table stores 100 rows: colour_id, colour_name, pantone_code, hex_value, is_standard. The 12 standard colours (flagged is_standard = 1) are: Red, Orange, Yellow, Green, Blue, Violet, Pink, Brown, Black, White, Grey, Beige. The other 88 popular shades are loaded from a seed CSV (colours_seed.csv).
+Please note: I have not hard-coded 100 Pantone codes here because exact TCX codes must match the official Pantone Fashion, Home + Interiors guide. Fill pantone_code and hex_value from that guide (or the list your institution provides) when preparing the seed file.
+5.5 Database design (MySQL)
+Tables are grouped by module. Keys and checks are shown; indexes on foreign keys are implied.
+-- Reference dataCREATE TABLE users (  user_id INT PRIMARY KEY AUTO_INCREMENT,  name VARCHAR(100) NOT NULL,  email VARCHAR(120) UNIQUE NOT NULL,  password_hash VARCHAR(255) NOT NULL,  role ENUM('company','customer','supplier') NOT NULL,  phone VARCHAR(20));CREATE TABLE colours (  colour_id INT PRIMARY KEY AUTO_INCREMENT,  colour_name VARCHAR(60) NOT NULL,  pantone_code VARCHAR(30) UNIQUE NOT NULL,  hex_value CHAR(7),  is_standard TINYINT(1) DEFAULT 0);CREATE TABLE yarn_types (  yarn_type_id INT PRIMARY KEY AUTO_INCREMENT,  type_name VARCHAR(60) UNIQUE NOT NULL      -- e.g. Cotton, Polyester);-- Module B/C: yarn orders (the table you specified)CREATE TABLE yarn_orders (  order_no      VARCHAR(20) PRIMARY KEY,        -- e.g. YO-2026-0001  supplier_id   INT NOT NULL,                   -- FK users (role=supplier)  colour_id     INT NOT NULL,                   -- FK colours  (colour)  yarn_type_id  INT NOT NULL,                   -- FK yarn_types (type)  quantity      DECIMAL(10,2) NOT NULL,         -- kg ordered  price_per_kg  DECIMAL(10,2) NOT NULL,  status        ENUM('not_supplied','supplied') NOT NULL DEFAULT 'not_supplied',  ordered_at    DATETIME DEFAULT CURRENT_TIMESTAMP,  FOREIGN KEY (supplier_id)  REFERENCES users(user_id),  FOREIGN KEY (colour_id)    REFERENCES colours(colour_id),  FOREIGN KEY (yarn_type_id) REFERENCES yarn_types(yarn_type_id));-- Module C: gate entry (4 inputs: qty, type, colour, order_no)CREATE TABLE yarn_receipts (  receipt_id    INT PRIMARY KEY AUTO_INCREMENT,  order_no      VARCHAR(20) NOT NULL,  yarn_type_id  INT NOT NULL,  colour_id     INT NOT NULL,  quantity      DECIMAL(10,2) NOT NULL CHECK (quantity > 0),   -- kg received  received_by   INT NOT NULL,  received_at   DATETIME DEFAULT CURRENT_TIMESTAMP,  FOREIGN KEY (order_no) REFERENCES yarn_orders(order_no),  FOREIGN KEY (yarn_type_id) REFERENCES yarn_types(yarn_type_id),  FOREIGN KEY (colour_id) REFERENCES colours(colour_id),  FOREIGN KEY (received_by) REFERENCES users(user_id));-- Module D: stockCREATE TABLE yarn_stock (  stock_id      INT PRIMARY KEY AUTO_INCREMENT,  yarn_type_id  INT NOT NULL,  colour_id     INT NOT NULL,  available_kg  DECIMAL(10,2) NOT NULL DEFAULT 0,  reserved_kg   DECIMAL(10,2) NOT NULL DEFAULT 0,  reorder_level DECIMAL(10,2) NOT NULL DEFAULT 100,  UNIQUE (yarn_type_id, colour_id),  FOREIGN KEY (yarn_type_id) REFERENCES yarn_types(yarn_type_id),  FOREIGN KEY (colour_id) REFERENCES colours(colour_id));-- Module G: buyer ordersCREATE TABLE buyer_orders (  order_id       INT PRIMARY KEY AUTO_INCREMENT,  customer_id    INT NOT NULL,  yarn_type_id   INT NOT NULL,                  -- fabric/yarn type needed  colour_id      INT NOT NULL,  quantity_kg    DECIMAL(10,2) NOT NULL,        -- fabric ordered  yarn_needed_kg DECIMAL(10,2) NOT NULL,        -- quantity x (1 + wastage)  price_per_kg   DECIMAL(10,2) NOT NULL,        -- selling price  deadline       DATE NOT NULL,  status ENUM('placed','awaiting_yarn','in_queue','spinning','weaving','dyeing',              'quality_check','ready_to_ship','dispatched') NOT NULL DEFAULT 'placed',  ready_at       DATETIME NULL,                 -- when it joined FIFO queue  created_at     DATETIME DEFAULT CURRENT_TIMESTAMP,  FOREIGN KEY (customer_id) REFERENCES users(user_id),  FOREIGN KEY (yarn_type_id) REFERENCES yarn_types(yarn_type_id),  FOREIGN KEY (colour_id) REFERENCES colours(colour_id));-- Module E: machines and jobsCREATE TABLE machines (  machine_id INT PRIMARY KEY AUTO_INCREMENT,  machine_name VARCHAR(50) UNIQUE NOT NULL,  stage ENUM('spinning','weaving','dyeing') NOT NULL,  status ENUM('idle','running','breakdown','removed') NOT NULL DEFAULT 'idle',  capacity_kg_per_hr DECIMAL(8,2) NULL,  installed_on DATE NOT NULL DEFAULT (CURRENT_DATE),  removed_on DATE NULL,  removal_reason VARCHAR(255) NULL);-- One row per order per stage. status 'queued' rows form the FIFO queue.CREATE TABLE production_jobs (  job_id       INT PRIMARY KEY AUTO_INCREMENT,  order_id     INT NOT NULL,  stage        ENUM('spinning','weaving','dyeing') NOT NULL,  machine_id   INT NULL,                        -- NULL while waiting  target_kg    DECIMAL(10,2) NOT NULL,  done_kg      DECIMAL(10,2) NOT NULL DEFAULT 0,  status       ENUM('queued','running','completed') NOT NULL DEFAULT 'queued',  queued_at    DATETIME DEFAULT CURRENT_TIMESTAMP,   -- FIFO key  started_at   DATETIME NULL,  finished_at  DATETIME NULL,  FOREIGN KEY (order_id) REFERENCES buyer_orders(order_id),  FOREIGN KEY (machine_id) REFERENCES machines(machine_id));CREATE TABLE production_log (                   -- daily output entries  log_id     INT PRIMARY KEY AUTO_INCREMENT,  job_id     INT NOT NULL,  machine_id INT NOT NULL,  worker_id  INT NULL,  shift      ENUM('morning','evening','night') NOT NULL,  kg_produced DECIMAL(10,2) NOT NULL CHECK (kg_produced > 0),  logged_at  DATETIME DEFAULT CURRENT_TIMESTAMP,  FOREIGN KEY (job_id) REFERENCES production_jobs(job_id),  FOREIGN KEY (machine_id) REFERENCES machines(machine_id));CREATE TABLE daily_reports (                    -- saved end-of-day report  report_date DATE PRIMARY KEY,  total_kg    DECIMAL(10,2) NOT NULL,  generated_at DATETIME DEFAULT CURRENT_TIMESTAMP);-- Module F: rolls and QCCREATE TABLE fabric_rolls (  roll_id     INT PRIMARY KEY AUTO_INCREMENT,  roll_code   VARCHAR(30) UNIQUE NOT NULL,      -- e.g. R-000123  order_id    INT NOT NULL,                     -- traceability: order  machine_id  INT NOT NULL,                     -- traceability: machine  weight_kg   DECIMAL(8,2) NOT NULL,  produced_at DATETIME DEFAULT CURRENT_TIMESTAMP,  qc_status   ENUM('pending','passed','rework','rejected') NOT NULL DEFAULT 'pending',  store_status ENUM('not_ready','in_stock','dispatched') NOT NULL DEFAULT 'not_ready',  FOREIGN KEY (order_id) REFERENCES buyer_orders(order_id),  FOREIGN KEY (machine_id) REFERENCES machines(machine_id));CREATE TABLE qc_inspections (  inspection_id INT PRIMARY KEY AUTO_INCREMENT,  roll_id INT NOT NULL,  inspector_id INT NOT NULL,  result ENUM('passed','rework','rejected') NOT NULL,  defect_type ENUM('hole','colour_mismatch','uneven_weaving','other') NULL,  notes VARCHAR(255),  inspected_at DATETIME DEFAULT CURRENT_TIMESTAMP,  FOREIGN KEY (roll_id) REFERENCES fabric_rolls(roll_id),  FOREIGN KEY (inspector_id) REFERENCES users(user_id));-- Module H: dispatch and invoiceCREATE TABLE dispatches (  dispatch_id INT PRIMARY KEY AUTO_INCREMENT,  order_id    INT NOT NULL,  truck_no    VARCHAR(20) NOT NULL,  dispatched_at DATETIME DEFAULT CURRENT_TIMESTAMP,  FOREIGN KEY (order_id) REFERENCES buyer_orders(order_id));CREATE TABLE dispatch_items (  dispatch_id INT NOT NULL,  roll_id     INT NOT NULL UNIQUE,              -- UNIQUE = a roll can go out only once  PRIMARY KEY (dispatch_id, roll_id),  FOREIGN KEY (dispatch_id) REFERENCES dispatches(dispatch_id),  FOREIGN KEY (roll_id) REFERENCES fabric_rolls(roll_id));CREATE TABLE invoices (  invoice_id  INT PRIMARY KEY AUTO_INCREMENT,  invoice_no  VARCHAR(20) UNIQUE NOT NULL,  dispatch_id INT UNIQUE NOT NULL,              -- one invoice per dispatch  order_id    INT NOT NULL,  total_kg    DECIMAL(10,2) NOT NULL,           -- sum of loaded rolls  amount      DECIMAL(12,2) NOT NULL,           -- total_kg x price_per_kg  issued_at   DATETIME DEFAULT CURRENT_TIMESTAMP,  FOREIGN KEY (dispatch_id) REFERENCES dispatches(dispatch_id),  FOREIGN KEY (order_id) REFERENCES buyer_orders(order_id));-- Module I: workers, wages, paymentsCREATE TABLE workers (  worker_id INT PRIMARY KEY AUTO_INCREMENT,  name VARCHAR(100) NOT NULL,  daily_wage DECIMAL(8,2) NOT NULL);CREATE TABLE attendance (  worker_id INT NOT NULL,  work_date DATE NOT NULL,  shift ENUM('morning','evening','night') NOT NULL,  present TINYINT(1) NOT NULL DEFAULT 1,  PRIMARY KEY (worker_id, work_date, shift),  FOREIGN KEY (worker_id) REFERENCES workers(worker_id));CREATE TABLE wage_payments (  payment_id INT PRIMARY KEY AUTO_INCREMENT,  worker_id INT NOT NULL,  month_year CHAR(7) NOT NULL,                  -- '2026-10'  days_present INT NOT NULL,  amount DECIMAL(10,2) NOT NULL,  paid_on DATE NOT NULL,  FOREIGN KEY (worker_id) REFERENCES workers(worker_id));CREATE TABLE supplier_payments (  payment_id INT PRIMARY KEY AUTO_INCREMENT,  order_no VARCHAR(20) NOT NULL,  amount DECIMAL(12,2) NOT NULL,  paid_on DATE NOT NULL,  FOREIGN KEY (order_no) REFERENCES yarn_orders(order_no));CREATE TABLE buyer_payments (  payment_id INT PRIMARY KEY AUTO_INCREMENT,  invoice_id INT NOT NULL,  amount DECIMAL(12,2) NOT NULL,  paid_on DATE NOT NULL,  FOREIGN KEY (invoice_id) REFERENCES invoices(invoice_id));
+Machine history table (Module J). Every change to a machine is logged here so the machine detail page can show how it has behaved. Machines are never hard-deleted: removal sets status = 'removed', because past rolls, production logs and QC records still point to the machine.
+CREATE TABLE machine_events (  event_id INT PRIMARY KEY AUTO_INCREMENT,  machine_id INT NOT NULL,  event_type ENUM('added','job_started','job_finished','breakdown','repaired','removed') NOT NULL,  job_id INT NULL,  note VARCHAR(255),  user_id INT NULL,  event_at DATETIME DEFAULT CURRENT_TIMESTAMP,  FOREIGN KEY (machine_id) REFERENCES machines(machine_id),  FOREIGN KEY (job_id) REFERENCES production_jobs(job_id),  FOREIGN KEY (user_id) REFERENCES users(user_id));
+5.6 Key business rules (how it works)
+1. Gate entry (Module C). Input: order_no, yarn_type, colour, quantity.
+BEGIN TRANSACTION  order = yarn_orders WHERE order_no = input  if order missing or type/colour differ -> reject with message  insert yarn_receipts row  yarn_stock (type, colour): available_kg += quantity   (create row if new)  if SUM(receipts for order_no) >= order.quantity -> status = 'supplied'  re-check buyer orders in 'awaiting_yarn' (oldest first)COMMIT
+2. Low-stock warning (D2). free_kg = available_kg - reserved_kg. Warning when free_kg <= reorder_level.
+SELECT t.type_name, c.colour_name, s.available_kg, s.reserved_kg,       (s.available_kg - s.reserved_kg) AS free_kg, s.reorder_levelFROM yarn_stock sJOIN yarn_types t ON t.yarn_type_id = s.yarn_type_idJOIN colours c ON c.colour_id = s.colour_idWHERE (s.available_kg - s.reserved_kg) <= s.reorder_level;
+3. New buyer order – enough yarn? (D3–D5).
+yarn_needed = quantity_kg x 1.05free = available_kg - reserved_kg  for (type, colour)if free >= yarn_needed:    reserved_kg += yarn_needed ; status = 'in_queue' ; ready_at = NOW()    create spinning job (status 'queued')else:    status = 'awaiting_yarn' ; show 'Short by (yarn_needed - free) kg'
+4. FIFO assignment (E1–E3). Run whenever a job is queued, a job completes, or a machine returns from breakdown:
+-- for each idle machine of a stage, take the oldest queued job of that stageSELECT job_id FROM production_jobsWHERE stage = :stage AND status = 'queued'ORDER BY queued_at ASC        -- FIFOLIMIT 1 FOR UPDATE;-- then: job.machine_id = machine, job.status = 'running', machine.status = 'running'
+When a job's done_kg >= target_kg: job = completed, machine = idle, the order's next stage job is queued (spinning → weaving → dyeing), then the assigner runs again so the freed machine takes the next order. After dyeing completes, rolls are created and the order moves to quality_check.
+5. Factory Status page (E4).
+SELECT m.machine_name, m.stage, m.status,       j.order_id, j.done_kg, j.target_kg,       ROUND(100 * j.done_kg / j.target_kg, 1) AS progress_pct,       COALESCE((SELECT SUM(kg_produced) FROM production_log p                 WHERE p.machine_id = m.machine_id                   AND DATE(p.logged_at) = CURDATE()), 0) AS kg_todayFROM machines mLEFT JOIN production_jobs j ON j.machine_id = m.machine_id AND j.status = 'running'WHERE m.status <> 'removed';-- machines with status = 'idle' are shown in a separate "Idle machines" section
+6. Production till now / end-of-day report (E6–E7).
+-- live totalSELECT COALESCE(SUM(kg_produced),0) AS kg_todayFROM production_log WHERE DATE(logged_at) = CURDATE();-- end-of-day breakdown (also saved to daily_reports)SELECT m.machine_name, SUM(p.kg_produced) AS kgFROM production_log p JOIN machines m ON m.machine_id = p.machine_idWHERE DATE(p.logged_at) = CURDATE() GROUP BY m.machine_name;
+A scheduled job (cron / node-cron / APScheduler) runs at day end (e.g. 23:59) and stores the result in daily_reports.
+7. Quality check (F). Result passed → qc_status='passed', store_status='in_stock', and when every roll of an order is passed the order becomes ready_to_ship. rework → roll goes back to production, then returns to pending. rejected → roll excluded from dispatch. Defect traceability query:
+SELECT m.machine_name, q.defect_type, COUNT(*) AS defectsFROM qc_inspections qJOIN fabric_rolls r ON r.roll_id = q.roll_idJOIN machines m ON m.machine_id = r.machine_idWHERE q.result <> 'passed'GROUP BY m.machine_name, q.defect_type;
+8. Order status for customers (G). The status is the buyer_orders.status column, updated by the backend at each event (stock check, job start, stage change, QC, dispatch). Mapping shown to customers: placed→Order Placed · awaiting_yarn→Awaiting Material · in_queue→In Queue · spinning/weaving/dyeing→In Production (stage name) · quality_check→Quality Check · ready_to_ship→Ready to Ship · dispatched→Dispatched. Estimated delivery date is shown when the order is in the queue or later.
+9. Dispatch with matching invoice (H).
+BEGIN TRANSACTION  selected rolls must satisfy ALL of:     roll.order_id = chosen order       (right buyer / right order)     roll.qc_status = 'passed'     roll.store_status = 'in_stock'     (not already sent)  SUM(roll.weight_kg) must equal the order quantity (or is accepted as a     partial dispatch only if the staff confirms)  (right quantity)  insert dispatches, dispatch_items (UNIQUE roll_id blocks double dispatch)  roll.store_status = 'dispatched'  insert invoices: total_kg = SUM(rolls), amount = total_kg x price_per_kg  order.status = 'dispatched' (when all kg are sent)COMMIT
+Because the invoice is built from the same list of rolls, it always matches what was loaded.
+10. Finished goods on the shelf.
+SELECT COALESCE(SUM(weight_kg),0) AS on_shelf_kgFROM fabric_rolls WHERE store_status = 'in_stock';
+11. Month-end report (I5). Cost of an order = yarn cost + allocated wages.
+Yarn cost = yarn_needed_kg × price_per_kg of the yarn used.
+Allocated wages = month's wage total × (order's produced kg ÷ all produced kg that month).
+-- kg per machine in a monthSELECT m.machine_name, SUM(p.kg_produced) AS kgFROM production_log p JOIN machines m ON m.machine_id = p.machine_idWHERE DATE_FORMAT(p.logged_at,'%Y-%m') = :month GROUP BY m.machine_name;-- totals for profit/lossSELECT  (SELECT COALESCE(SUM(amount),0) FROM buyer_payments    WHERE DATE_FORMAT(paid_on,'%Y-%m') = :month)     AS money_in,  (SELECT COALESCE(SUM(amount),0) FROM wage_payments    WHERE month_year = :month)                       AS wages_out,  (SELECT COALESCE(SUM(amount),0) FROM supplier_payments    WHERE DATE_FORMAT(paid_on,'%Y-%m') = :month)     AS yarn_out;-- profit = money_in - wages_out - yarn_out
+The dashboard shows a clear Profit / Loss figure in green or red.
+12. Machine management (Module J).
+-- Add a machine (starts idle), log it, then run the FIFO assignerINSERT INTO machines (machine_name, stage, capacity_kg_per_hr, installed_on)VALUES (:name, :stage, :capacity, :installed_on);INSERT INTO machine_events (machine_id, event_type, user_id)VALUES (LAST_INSERT_ID(), 'added', :user);-- Breakdown: machine skipped; its running job returns to the FRONT of the queueUPDATE machines SET status = 'breakdown' WHERE machine_id = :id;UPDATE production_jobs SET machine_id = NULL, status = 'queued'   -- queued_at is keptWHERE machine_id = :id AND status = 'running';INSERT INTO machine_events (machine_id, event_type, user_id) VALUES (:id, 'breakdown', :user);-- Remove (allowed only when broken or idle); soft delete keeps historyUPDATE machinesSET status = 'removed', removed_on = CURDATE(), removal_reason = :reasonWHERE machine_id = :id AND status IN ('breakdown','idle');INSERT INTO machine_events (machine_id, event_type, note, user_id)VALUES (:id, 'removed', :reason, :user);-- Machine detail page: how this machine is functioningSELECT m.machine_name, m.stage, m.status, m.installed_on,  (SELECT COALESCE(SUM(kg_produced),0) FROM production_log    WHERE machine_id = m.machine_id AND DATE(logged_at) = CURDATE()) AS kg_today,  (SELECT COALESCE(SUM(kg_produced),0) FROM production_log    WHERE machine_id = m.machine_id      AND DATE_FORMAT(logged_at,'%Y-%m') = DATE_FORMAT(CURDATE(),'%Y-%m')) AS kg_month,  (SELECT COUNT(*) FROM machine_events    WHERE machine_id = m.machine_id AND event_type = 'breakdown') AS breakdowns,  (SELECT COUNT(*) FROM fabric_rolls    WHERE machine_id = m.machine_id AND qc_status IN ('rework','rejected')) AS defective_rolls,  (SELECT COUNT(*) FROM fabric_rolls WHERE machine_id = m.machine_id) AS total_rollsFROM machines m WHERE m.machine_id = :id;
+A "repaired" action sets the machine back to idle, logs the event and runs the assigner again. The FIFO assigner only ever picks machines with status idle, so broken and removed machines are never given work.
+5.7 REST API (summary)
+Method & route
+Role
+Purpose
+POST /auth/login
+all
+Login, returns token + role
+POST /yarn-orders
+company
+Create yarn order (status not_supplied)
+GET /yarn-orders
+company, supplier
+List yarn orders
+POST /gate-entry
+company
+Four-input gate entry
+GET /stock · GET /stock/alerts
+company
+Stock and low-stock warnings
+POST /orders
+customer
+Place buyer order (runs yarn check)
+GET /orders/my
+customer
+Own orders with status only
+GET /orders · GET /orders/:id/yarn-check
+company
+All orders; enough-yarn check
+GET /factory-status
+company
+Machines, jobs, idle list, kg today
+POST /production-log
+company
+Record kg produced on a job
+PATCH /machines/:id/status
+company
+Mark breakdown / back to idle
+GET /production/today · GET /reports/daily?date=
+company
+Live total and end-of-day report
+GET /rolls · POST /qc
+company
+Roll list with filters; record QC result
+GET /store
+company
+Finished goods on shelf and gone out
+POST /dispatch
+company
+Validate rolls, create dispatch + invoice
+GET /invoices/:id
+company
+View invoice
+POST /attendance · POST /payments/*
+company
+Wages and payments
+GET /reports/monthly?month=
+company
+Order costs, machine output, wages, profit
+POST `/machines`
+company
+Add a new machine (starts idle)
+GET `/machines/:id`
+company
+Machine detail: status, output, breakdowns, defect rate, event history
+DELETE `/machines/:id`
+company
+Remove a broken or idle machine (soft delete, reason required)
+The /orders/my route returns only order number, status, quantity, deadline and estimated delivery; no roll, machine, invoice or cost fields.
+5.8 Requirement coverage check
+Scene in the problem statement
+Covered by
+Yarn arrives at the gate
+B, C, D (4-input gate entry, stock, low-stock, enough-yarn check)
+Production floor, mid-shift
+E, J (FIFO queue, Factory Status, live total, end-of-day report, add / view / remove machines)
+Checking fabric
+F (rolls linked to order + machine, QC pass/rework/reject, defect view)
+Buyer calls about order
+G (customer page status)
+Loading the truck
+H (roll/buyer/quantity match, invoice, store totals, no double dispatch; company-only)
+Owner closing the books
+I (order cost, machine output, wages, payments, profit/loss)
+5.9 Suggested build order
+Database tables and seed data (colours, yarn types, machines).
+Login and roles.
+Yarn order → gate entry → stock and alerts.
+Buyer order, yarn check, FIFO queue and Factory Status.
+Production entry, rolls, QC.
+Customer status page.
+Dispatch, invoice, store.
+Wages, payments, month-end report.
