@@ -80,3 +80,4 @@ export default function Header({ currentUser, onLogout }) {
     </header>
   );
 }
+
