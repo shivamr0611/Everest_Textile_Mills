@@ -7,7 +7,7 @@ An end-to-end web platform built in strict compliance with the **RCOD Document (
 ## 🎨 Theme & Visual Design
 - **Theme**: Basic blue and white and complementary shades of blue:
   - **Deep Mill Navy (`#0f2744`)**: Top navigation and executive branding.
-  - **Classic Primary Blue (`#1e3a8a`)**: Primary cards, badges, and headers.
+  - **Classic Primary Blue (`#1e3a8a`)**: Primary cards, badges, and headers. 
   - **Royal Blue (`#2563eb`)**: Action buttons, active indicators, and progress bars.
   - **Sky Blue & Ice Blue (`#0284c7`, `#e0f2fe`, `#f0f7ff`)**: Subtle backgrounds, stats highlights, and tooltips.
   - **Crisp White (`#ffffff`)**: Clean data tables, modal dialogs, and content cards.
