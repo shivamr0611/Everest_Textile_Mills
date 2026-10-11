@@ -75,3 +75,4 @@ conn.commit()
 conn.close()
 
 print(f"\nDone! Inserted={inserted}, Skipped={skipped}, CompanyUpdated={updated}")
+
