@@ -13,7 +13,7 @@ An end-to-end web platform built in strict compliance with the **RCOD Document (
   - **Crisp White (`#ffffff`)**: Clean data tables, modal dialogs, and content cards.
 - **Unit of Measure**: Strictly **kg** throughout all yarn stock, orders, machines, and rolls.
 
----
+--- 
 
 ## 🏗️ Architecture & Stack
 - **Database**: 
